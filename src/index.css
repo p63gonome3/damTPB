@@ -1,0 +1,39 @@
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap');
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'DM Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+:root {
+  --background: #070B10;
+  --foreground: #E8EDF5;
+  --card: #0D1117;
+  --card-foreground: #E8EDF5;
+  --primary: #00D4FF;
+  --primary-foreground: #070B10;
+  --secondary: #111827;
+  --secondary-foreground: #E8EDF5;
+  --muted: #131B26;
+  --muted-foreground: #5A7090;
+  --accent: #7C3AED;
+  --accent-foreground: #F0F4FA;
+  --border: #1E2A3A;
+  --ring: #00D4FF44;
+  --radius: 2px;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #1E2A3A transparent;
+}
+*::-webkit-scrollbar { width: 4px; height: 4px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: #1E2A3A; border-radius: 2px; }
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}
