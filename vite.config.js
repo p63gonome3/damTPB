@@ -9,4 +9,13 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  server: {
+    port: 5173,
+    proxy: {
+      '/api': 'http://localhost:8000' // Proxy API calls to FastAPI
+    }
+  },
+  build: {
+    outDir: 'dist'
+  }
 })

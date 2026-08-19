@@ -1,4 +1,6 @@
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
+import { FileUploader } from "react-drag-drop-files";
+// import UploadModal from './components/UploadModal'
 
 
 // ─── DESIGN TOKENS ─────────────────────────────────────────────────────────────
@@ -70,7 +72,6 @@ const licenseColor = {
 }
 
 const confidenceColor = (c) => c >= .90 ? T.green : c >= .75 ? T.amber : T.text2
-
 const img = (photoId, w, h) =>
   `https://images.unsplash.com/photo-${photoId}?w=${w}&h=${h}&fit=crop&auto=format`
 
@@ -89,8 +90,9 @@ function IconBtn({ onClick, title, children }) {
 
 // ─── TOP BAR ───────────────────────────────────────────────────────────────────
 function TopBar({
-  search, onSearch, filterOpen, onToggleFilter, onToggleIntegration, integrationActive,
+  search, onSearch, filterOpen, onToggleFilter, onToggleIntegration, integrationActive, uploadOpen, onUploadOpen
 }) {
+
   return (
     <header className="flex items-center gap-4 px-5 h-14 flex-shrink-0 sticky top-0 z-30"
       style={{ backgroundColor: T.bg1 + 'F0', backdropFilter: 'blur(12px)', borderBottom: `1px solid ${T.border}` }}>
@@ -140,11 +142,18 @@ function TopBar({
             <path d="M3 4h18M7 8h10M11 12h2M13 16h-2" strokeLinecap="round" />
           </svg>
         </IconBtn>
-        <IconBtn title="Upload assets">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-            <path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 12V4M8 8l4-4 4 4" strokeLinecap="round" strokeLinejoin="round" />
+        <button
+          onClick={() => onUploadOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded font-medium transition-all"
+          style={{ background: '#4f7ef8', color: 'white' }}
+          onMouseEnter={e => (e.currentTarget.style.background = '#6b93ff')}
+          onMouseLeave={e => (e.currentTarget.style.background = '#4f7ef8')}>
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+            <path d="M6.5 9V1M3 4l3.5-3.5L10 4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M1 11h11" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
-        </IconBtn>
+          Add to Library
+        </button>
         <button onClick={onToggleIntegration}
           className="flex items-center gap-2 px-3 h-8 rounded-sm text-xs font-medium transition-all ml-1"
           style={{
@@ -751,6 +760,384 @@ function ActionDock({ count, onClear }) {
   )
 }
 
+// ─── UPLOAD MODAL ──────────────────────────────────────────────────────────────
+function UploadModal({ onClose, onComplete }) {
+  const [step, setStep] = useState(1)
+  const [dragOver, setDragOver] = useState(false)
+  const [targetCollection, setTargetCollection] = useState('q4')
+  const [tags, setTags] = useState(['photography','editorial','brand'])
+  const [tagInput, setTagInput] = useState('')
+  const [license, setLicense] = useState('Royalty Free')
+  const [toggles, setToggles] = useState({ aiMetadata: true, webRenditions: true, notifyTeam: false })
+  const [fileProgress, setFileProgress] = useState([0, 0, 0])
+  const [completed, setCompleted] = useState(false)
+
+  const removeTag = (t) => setTags(p => p.filter(x => x !== t))
+  const addTag = (e) => {
+    if (e.key === 'Enter' && tagInput.trim()) {
+      setTags(p => [...p, tagInput.trim().toLowerCase()])
+      setTagInput('')
+    }
+  }
+
+  const handleChange = (files) => {
+    console.log(files);
+    setStep(2);
+  };
+
+  // Progress animation
+  useEffect(() => {
+    if (step !== 3 || completed) return
+    const id = setInterval(() => {
+      setFileProgress(prev => {
+        const n = [...prev]
+        if (n[0] < 100) n[0] = Math.min(100, n[0] + Math.random() * 18 + 6)
+        if (n[0] > 20 && n[1] < 100) n[1] = Math.min(100, n[1] + Math.random() * 14 + 5)
+        if (n[1] > 30 && n[2] < 100) n[2] = Math.min(100, n[2] + Math.random() * 10 + 3)
+        return n
+      })
+    }, 180)
+    return () => clearInterval(id)
+  }, [step, completed])
+
+  useEffect(() => {
+    if (step === 3 && !completed && fileProgress.every(p => p >= 100)) {
+      setCompleted(true)
+      setTimeout(() => {
+        const now = new Date().toISOString().split('T')[0]
+        onComplete(MOCK_UPLOAD_FILES.map(f => ({
+          id: `up-${f.id}-${Date.now()}`,
+          title: f.displayName,
+          photographer: 'Your Organization',
+          type: f.type,
+          aspect: f.aspect,
+          photoId: f.photoId,
+          collection: targetCollection,
+          colors: [T.blue, T.violet, T.cyan, T.bg4, '#F0F0FA'],
+          tags: [
+            ...tags.slice(0,3).map(t => ({ label: t, confidence: .99, category: 'manual' })),
+            { label: 'newly uploaded', confidence: .99, category: 'status' },
+            { label: toggles.aiMetadata ? 'ai-tagged' : f.type, confidence: .95, category: 'process' },
+          ],
+          license: license,
+          dimensions: f.type === 'video' ? '3840 × 2160 px' : '4000 × 2667 px',
+          fileSize: f.size,
+          duration: f.duration,
+          downloads: 0,
+          dateAdded: now,
+          featured: false,
+        })))
+      }, 1200)
+    }
+  }, [fileProgress, step, completed])
+
+  const totalSize = '33.7 MB'
+  const overlay = 'fixed inset-0 z-[100] flex items-center justify-center p-6'
+  const modal = 'relative w-full rounded-sm overflow-hidden shadow-2xl'
+  const fileTypes = ["JPG", "PNG", "GIF"];
+
+  const StepDot = ({ n=[1, 2, 3] }) => (
+    <div className="flex items-center gap-1.5">
+      <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-all"
+        style={{ backgroundColor: step > n ? T.green : step === n ? T.blue : T.bg4, color: step >= n ? '#fff' : T.text2 }}>
+        {step > n ? '✓' : n}
+      </div>
+      <span className="text-xs" style={{ color: step === n ? T.text0 : T.text2 }}>
+        {n===1?'Select Files':n===2?'Configure Metadata':'Upload'}
+      </span>
+      {n < 3 && <div className="w-8 h-px mx-1" style={{ backgroundColor: step > n ? T.green+'66' : T.border }} />}
+    </div>
+  )
+
+  return (
+    <div className={overlay} style={{ backgroundColor: 'rgba(15,17,23,.85)', backdropFilter: 'blur(8px)' }}>
+      <div className={modal} style={{ maxWidth: step === 2 ? 780 : 600, backgroundColor: T.bg1, border: `1px solid ${T.borderHi}` }}>
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: `1px solid ${T.border}` }}>
+          <div>
+            <h2 className="text-sm font-semibold" style={{ color: T.text0 }}>Upload Assets</h2>
+            <div className="flex items-center mt-2 gap-1">{([1,2,3]).map(n => <StepDot key={n} n={n} />)}</div>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-sm flex items-center justify-center"
+            style={{ backgroundColor: T.bg3, color: T.text1, border: `1px solid ${T.border}` }}>
+            <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        {/* ── STEP 1: Dropzone ── */}
+        {step === 1 && (
+          <div className="p-6 space-y-5">
+            <FileUploader handleChange={handleChange} name="file" types={fileTypes} multiple={true} maxSize={50} style={{ width: 'stretch', height: 'stretch' }}>
+               <div
+                className="flex flex-col items-center justify-center rounded-sm py-14 px-6 text-center transition-all cursor-pointer"
+                style={{
+                  border: `2px dashed ${dragOver ? T.blue : T.borderHi}`,
+                  backgroundColor: dragOver ? T.blueDim : T.bg2,
+                }}
+                onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={e => { e.preventDefault(); setDragOver(false); setStep(2) }}
+                onClick={() => setStep(2)}>
+                <div className="w-14 h-14 rounded-full flex items-center justify-center mb-4"
+                  style={{ backgroundColor: dragOver ? T.blue+'33' : T.bg3, border: `1px solid ${dragOver ? T.blue+'55' : T.border}` }}>
+                  <svg width={28} height={28} viewBox="0 0 24 24" fill="none" stroke={dragOver ? T.blue : T.text1} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 12V4M8 8l4-4 4 4"/>
+                  </svg>
+                </div>
+                <p className="text-sm font-semibold mb-1" style={{ color: T.text0 }}>
+                  {dragOver ? 'Release to upload' : 'Drop files here or browse'}
+                </p>
+                <p className="text-xs mb-5" style={{ color: T.text2 }}>JPG  PNG  GIF  SVG  MP4  PDF  AI  PSD</p>
+                <div className="flex gap-3">
+                  <button onClick={e => { e.stopPropagation(); setStep(2) }}
+                    className="px-5 py-2 rounded-sm text-xs font-semibold"
+                    style={{ backgroundColor: T.blue, color: '#fff' }}>Browse files</button>
+                  <button onClick={e => e.stopPropagation()}
+                    className="px-5 py-2 rounded-sm text-xs font-medium"
+                    style={{ backgroundColor: T.bg3, color: T.text1, border: `1px solid ${T.border}` }}>Search folder</button>
+                </div>
+              </div>
+            </FileUploader>
+
+            {/* Shortcuts */}
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-widest mb-2.5" style={{ color: T.text2 }}>Recent Locations</p>
+              <div className="flex gap-2 flex-wrap">
+                {['Desktop','Downloads','Documents'].map(loc => (
+                  <button key={loc} onClick={() => setStep(2)}
+                    className="flex items-center gap-2 px-3 py-2 rounded-sm text-xs transition-colors"
+                    style={{ backgroundColor: T.bg3, color: T.text1, border: `1px solid ${T.border}` }}
+                    onMouseEnter={e => (e.currentTarget.style.borderColor = T.blue+'55')}
+                    onMouseLeave={e => (e.currentTarget.style.borderColor = T.border)}>
+                    <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+                    </svg>
+                    {loc}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-widest mb-2.5" style={{ color: T.text2 }}>Cloud Storage</p>
+              <div className="flex gap-2 flex-wrap">
+                {[['Google Drive','#4285F4'],['Dropbox','#0061FF'],['Box','#0075C9'],['OneDrive','#0078D4']].map(([name,color])=>(
+                  <button key={name} onClick={() => setStep(2)}
+                    className="flex items-center gap-2 px-3 py-2 rounded-sm text-xs transition-colors"
+                    style={{ backgroundColor: T.bg3, color: T.text1, border: `1px solid ${T.border}` }}
+                    onMouseEnter={e => (e.currentTarget.style.borderColor = color+'88')}
+                    onMouseLeave={e => (e.currentTarget.style.borderColor = T.border)}>
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                    {name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── STEP 2: Metadata ── */}
+        {step === 2 && (
+          <>
+            <div className="flex" style={{ minHeight: 420 }}>
+              {/* Left: file list */}
+              <div className="w-56 flex-shrink-0 p-4 space-y-2 overflow-y-auto" style={{ borderRight: `1px solid ${T.border}` }}>
+                <p className="font-mono text-[10px] uppercase tracking-widest mb-3" style={{ color: T.text2 }}>Files ({MOCK_UPLOAD_FILES.length})</p>
+                {MOCK_UPLOAD_FILES.map(f => (
+                  <div key={f.id} className="flex items-center gap-2.5 p-2 rounded-sm" style={{ backgroundColor: T.bg2, border: `1px solid ${T.border}` }}>
+                    <div className="w-9 h-9 flex-shrink-0 rounded-sm overflow-hidden">
+                      <img src={img(f.photoId, 72, 72)} alt={f.name} className="w-full h-full object-cover" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[11px] truncate font-medium" style={{ color: T.text0 }}>{f.name}</p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="font-mono text-[9px]" style={{ color: T.text2 }}>{f.size}</span>
+                        {f.type === 'video' && <span className="font-mono text-[9px] px-1 rounded-sm" style={{ backgroundColor: T.rose+'22', color: T.rose }}>VID</span>}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <button className="w-full flex items-center gap-2 py-2 px-2.5 rounded-sm text-xs transition-colors"
+                  style={{ backgroundColor: 'transparent', color: T.blue, border: `1px dashed ${T.blue}55` }}
+                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = T.blueDim)}
+                  onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}>
+                  <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                  Add more files
+                </button>
+              </div>
+
+              {/* Right: metadata config */}
+              <div className="flex-1 p-5 space-y-5 overflow-y-auto">
+                {/* Collection */}
+                <div>
+                  <label className="font-mono text-[10px] uppercase tracking-widest block mb-1.5" style={{ color: T.text2 }}>Target Collection</label>
+                  <select value={targetCollection} onChange={e => setTargetCollection(e.target.value)}
+                    className="w-full h-8 px-3 text-xs rounded-sm outline-none appearance-none"
+                    style={{ backgroundColor: T.bg3, border: `1px solid ${T.border}`, color: T.text0 }}>
+                    <option value="all">All Assets</option>
+                    {COLLECTIONS.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                  </select>
+                </div>
+
+                {/* Tags */}
+                <div>
+                  <label className="font-mono text-[10px] uppercase tracking-widest block mb-1.5" style={{ color: T.text2 }}>Tags</label>
+                  <div className="flex flex-wrap gap-1.5 p-2 rounded-sm min-h-[36px]" style={{ backgroundColor: T.bg3, border: `1px solid ${T.border}` }}>
+                    {tags.map(t => (
+                      <span key={t} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[11px] font-mono"
+                        style={{ backgroundColor: T.blueDim, color: T.blue, border: `1px solid ${T.blue}33` }}>
+                        {t}
+                        <button onClick={() => removeTag(t)} style={{ color: T.blue, opacity: .7 }}>×</button>
+                      </span>
+                    ))}
+                    <input value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={addTag}
+                      placeholder="Add tag…" className="flex-1 min-w-[80px] text-xs outline-none bg-transparent"
+                      style={{ color: T.text0 }} />
+                  </div>
+                  <p className="text-[10px] mt-1" style={{ color: T.text2 }}>Press Enter to add</p>
+                </div>
+
+                {/* License */}
+                <div>
+                  <label className="font-mono text-[10px] uppercase tracking-widest block mb-1.5" style={{ color: T.text2 }}>License Type</label>
+                  <div className="flex flex-wrap gap-2">
+                    {Object.entries(licenseColor).map(([lic, color]) => (
+                      <button key={lic} onClick={() => setLicense(lic)}
+                        className="px-3 py-1.5 rounded-sm text-[11px] font-medium transition-all"
+                        style={{
+                          backgroundColor: license === lic ? color+'22' : T.bg3,
+                          color: license === lic ? color : T.text1,
+                          border: `1px solid ${license === lic ? color+'66' : T.border}`,
+                        }}>
+                        {lic}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Toggles */}
+                <div>
+                  <p className="font-mono text-[10px] uppercase tracking-widest mb-3" style={{ color: T.text2 }}>Processing Options</p>
+                  <div className="rounded-sm overflow-hidden" style={{ border: `1px solid ${T.border}` }}>
+                    {([
+                      { key: 'aiMetadata',   label: 'Generate AI metadata', sub: 'Auto-tag, describe, and embed assets using vision models' },
+                      { key: 'webRenditions',label: 'Create web renditions', sub: 'Auto-generate web, social, and thumbnail variants' },
+                      { key: 'notifyTeam',   label: 'Notify team on upload',sub: 'Send Slack/email notification when processing completes' },
+                    ]).map((opt, i) => (
+                      <div key={opt.key} className="flex items-center justify-between px-4 py-3"
+                        style={{ borderBottom: i < 2 ? `1px solid ${T.border}` : undefined }}>
+                        <div>
+                          <p className="text-xs font-medium" style={{ color: T.text0 }}>{opt.label}</p>
+                          <p className="text-[11px] mt-0.5" style={{ color: T.text2 }}>{opt.sub}</p>
+                        </div>
+                        <Toggle on={toggles[opt.key]} onToggle={() => setToggles(p => ({ ...p, [opt.key]: !p[opt.key] }))} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between px-6 py-4" style={{ borderTop: `1px solid ${T.border}` }}>
+              <button onClick={() => setStep(1)} className="px-4 h-8 rounded-sm text-xs font-medium"
+                style={{ backgroundColor: T.bg3, color: T.text1, border: `1px solid ${T.border}` }}>
+                ← Back
+              </button>
+              <div className="flex items-center gap-4">
+                <span className="font-mono text-xs" style={{ color: T.text2 }}>
+                  {MOCK_UPLOAD_FILES.length} files · <span style={{ color: T.text1 }}>{totalSize} total</span>
+                </span>
+                <button onClick={() => setStep(3)}
+                  className="flex items-center gap-2 px-5 h-8 rounded-sm text-xs font-semibold transition-all"
+                  style={{ backgroundColor: T.blue, color: '#fff' }}
+                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = T.blueSoft)}
+                  onMouseLeave={e => (e.currentTarget.style.backgroundColor = T.blue)}>
+                  Upload {MOCK_UPLOAD_FILES.length} files
+                  <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* ── STEP 3: Progress ── */}
+        {step === 3 && (
+          <div className="p-6 space-y-5">
+            {/* Overall progress */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold" style={{ color: T.text0 }}>
+                  {completed ? 'Upload complete!' : 'Uploading…'}
+                </p>
+                <span className="font-mono text-xs" style={{ color: T.text1 }}>
+                  {MOCK_UPLOAD_FILES.filter((_,i) => fileProgress[i] >= 100).length} / {MOCK_UPLOAD_FILES.length} files
+                </span>
+              </div>
+              <div className="w-full h-2 rounded-full overflow-hidden" style={{ backgroundColor: T.bg3 }}>
+                <div className="h-full rounded-full transition-all duration-300"
+                  style={{ width: `${fileProgress.reduce((a,b)=>a+b,0)/fileProgress.length}%`, backgroundColor: completed ? T.green : T.blue }} />
+              </div>
+              <div className="flex justify-between mt-1">
+                <span className="font-mono text-[11px]" style={{ color: T.text2 }}>
+                  {completed ? '100%' : `${Math.round(fileProgress.reduce((a,b)=>a+b,0)/fileProgress.length)}%`}
+                </span>
+                {!completed && <span className="font-mono text-[11px]" style={{ color: T.text2 }}>{totalSize}</span>}
+              </div>
+            </div>
+
+            {/* Per-file cards */}
+            <div className="space-y-2.5">
+              {MOCK_UPLOAD_FILES.map((f, i) => {
+                const pct = Math.round(fileProgress[i])
+                const done = pct >= 100
+                const active = !done && (i === 0 || fileProgress[i-1] > 20)
+                return (
+                  <div key={f.id} className="flex items-center gap-3 p-3 rounded-sm"
+                    style={{ backgroundColor: T.bg2, border: `1px solid ${done ? T.green+'33' : T.border}` }}>
+                    <div className="w-10 h-10 flex-shrink-0 rounded-sm overflow-hidden">
+                      <img src={img(f.photoId, 80, 80)} alt={f.name} className="w-full h-full object-cover" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium truncate mb-1.5" style={{ color: T.text0 }}>{f.name}</p>
+                      <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: T.bg4 }}>
+                        <div className="h-full rounded-full transition-all duration-300"
+                          style={{ width: `${pct}%`, backgroundColor: done ? T.green : active ? T.blue : T.text2 }} />
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="font-mono text-xs w-9 text-right" style={{ color: done ? T.green : T.text1 }}>{pct}%</span>
+                      {done
+                        ? <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: T.green+'22' }}>
+                            <svg viewBox="0 0 12 12" fill="none" width={10} height={10}><path d="M2 6l3 3 5-5" stroke={T.green} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"/></svg>
+                          </div>
+                        : active
+                          ? <svg className="animate-spin" width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={T.blue} strokeWidth={2}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/></svg>
+                          : <div className="w-5 h-5 rounded-full" style={{ backgroundColor: T.bg4 }} />
+                      }
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {completed && (
+              <div className="flex items-center justify-center gap-2 py-2 rounded-sm"
+                style={{ backgroundColor: T.green+'15', border: `1px solid ${T.green}44` }}>
+                <svg viewBox="0 0 12 12" fill="none" width={12} height={12}><path d="M2 6l3 3 5-5" stroke={T.green} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"/></svg>
+                <span className="text-xs font-medium" style={{ color: T.green }}>
+                  Assets processed and added to your library
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── INTEGRATION PANEL ─────────────────────────────────────────────────────────
 function IntegrationPanel({ onClose, recentAssets }) {
   const [localSearch, setLocalSearch] = useState('')
@@ -880,6 +1267,7 @@ export default function App() {
   const [activeCollection, setActiveCollection] = useState(null)
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState({ types: [], orientations: [], licenses: [] })
+  const [uploadOpen, setUploadOpen] = useState(false)
 
   const filteredAssets = useMemo(() => {
     return ASSETS.filter(a => {
@@ -908,6 +1296,12 @@ export default function App() {
     })
   }
 
+  const handleUploadComplete = (newAssets) => {
+    setUploadedAssets(prev => [...newAssets, ...prev])
+    setUploadOpen(false)
+    showToast(`${newAssets.length} assets uploaded and added to your library`, 'success')
+  }
+
   return (
     <div style={{ backgroundColor: T.bg0, minHeight: '100vh', color: T.text0 }}>
       <TopBar
@@ -915,6 +1309,7 @@ export default function App() {
         filterOpen={filterOpen} onToggleFilter={() => setFilterOpen(p => !p)}
         onToggleIntegration={() => setIntegrationOpen(p => !p)}
         integrationActive={integrationOpen}
+        uploadOpen={uploadOpen} onUploadOpen={setUploadOpen}
       />
 
       <div className="flex" style={{ height: 'calc(100vh - 56px)' }}>
@@ -999,6 +1394,9 @@ export default function App() {
 
       {/* Integration Panel */}
       {integrationOpen && <IntegrationPanel onClose={() => setIntegrationOpen(false)} recentAssets={ASSETS} />}
+
+      {/* Upload modal */}
+      {uploadOpen && <UploadModal onClose={() => setUploadOpen(false)} onComplete={handleUploadComplete} />}
     </div>
   )
 }
