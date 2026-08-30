@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { FileUploader } from "react-drag-drop-files";
+import axios from "axios";
 // import UploadModal from './components/UploadModal'
 
 
@@ -771,6 +772,8 @@ function UploadModal({ onClose, onComplete }) {
   const [toggles, setToggles] = useState({ aiMetadata: true, webRenditions: true, notifyTeam: false })
   const [fileProgress, setFileProgress] = useState([0, 0, 0])
   const [completed, setCompleted] = useState(false)
+  const [MOCK_UPLOAD_FILES, setMockUploadFiles] = useState([])
+  const [uploadFiles, setUploadFiles] = useState([])
 
   const removeTag = (t) => setTags(p => p.filter(x => x !== t))
   const addTag = (e) => {
@@ -780,8 +783,70 @@ function UploadModal({ onClose, onComplete }) {
     }
   }
 
+  const handleConfirm = async (e) => {
+    e.preventDefault();
+    // In a real app these would be actual File objects from the file system.
+    // Here we simulate them since we can't truly access the filesystem.
+    for (let i = 0; i < uploadFiles.length; i++) {
+      const formData = new FormData();
+      formData.append('file', uploadFiles[i]);
+      try {
+        const response = await axios.post(`/api/classify`, formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+            'accept': 'application/json'
+          }
+        });
+        console.log("Filename: ", uploadFiles[i].name, "\nClassification: ", response);
+      } catch (error) {
+        console.error("Error fetching data:", error);
+      }
+    }
+    setStep(3);
+  }
+
+  function bytesToSize(bytes) {
+    const BINARY_UNITS = [
+      { name: 'B', scale: 1 },          // Bytes
+      { name: 'KB', scale: 1024 },       // Kilobytes (binary)
+      { name: 'MB', scale: 1024 ** 2 },  // Megabytes (binary)
+      { name: 'GB', scale: 1024 ** 3 },  // Gigabytes (binary)
+      { name: 'TB', scale: 1024 ** 4 },  // Terabytes (binary)
+      { name: 'PB', scale: 1024 ** 5 },  // Petabytes (binary)
+    ];
+
+    if (typeof bytes !== 'number' || bytes < 0 || isNaN(bytes)) {
+      throw new Error('Bytes must be a non-negative number');
+    }
+    
+    if (bytes === 0) {
+      return '0 B';
+    }
+
+    let unitIndex = 0;
+    for (let i = 0; i < BINARY_UNITS.length; i++) {
+      if (bytes >= BINARY_UNITS[i].scale) {
+        unitIndex = i;
+      } else {
+        break;
+      }
+    }
+  
+    const unit = BINARY_UNITS[unitIndex];
+    const value = bytes / unit.scale;
+    const roundedValue = value.toFixed(2).replace(/\.00$/, ''); // e.g., 2.00 → 2
+  
+    return `${roundedValue} ${unit.name}`;
+  }
+
   const handleChange = (files) => {
-    console.log(files);
+    setUploadFiles(files)
+    for(let index=0; index < files.length; index++) {
+      const url = window.URL.createObjectURL(files[index])
+      MOCK_UPLOAD_FILES.push({
+        id: files[index].name, name: files[index].name, displayName: files[index].name, size: bytesToSize(files[index].size),
+        type: 'image', aspect: 'landscape', photoId: url })
+    }
     setStep(2);
   };
 
@@ -817,7 +882,6 @@ function UploadModal({ onClose, onComplete }) {
           tags: [
             ...tags.slice(0,3).map(t => ({ label: t, confidence: .99, category: 'manual' })),
             { label: 'newly uploaded', confidence: .99, category: 'status' },
-            { label: toggles.aiMetadata ? 'ai-tagged' : f.type, confidence: .95, category: 'process' },
           ],
           license: license,
           dimensions: f.type === 'video' ? '3840 × 2160 px' : '4000 × 2667 px',
@@ -877,8 +941,7 @@ function UploadModal({ onClose, onComplete }) {
                 }}
                 onDragOver={e => { e.preventDefault(); setDragOver(true) }}
                 onDragLeave={() => setDragOver(false)}
-                onDrop={e => { e.preventDefault(); setDragOver(false); setStep(2) }}
-                onClick={() => setStep(2)}>
+                onDrop={e => { e.preventDefault(); setDragOver(false); setStep(2) }}>
                 <div className="w-14 h-14 rounded-full flex items-center justify-center mb-4"
                   style={{ backgroundColor: dragOver ? T.blue+'33' : T.bg3, border: `1px solid ${dragOver ? T.blue+'55' : T.border}` }}>
                   <svg width={28} height={28} viewBox="0 0 24 24" fill="none" stroke={dragOver ? T.blue : T.text1} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
@@ -941,13 +1004,13 @@ function UploadModal({ onClose, onComplete }) {
         {step === 2 && (
           <>
             <div className="flex" style={{ minHeight: 420 }}>
-              {/* Left: file list */}
+              {/* Left: file list */ console.log(MOCK_UPLOAD_FILES)}
               <div className="w-56 flex-shrink-0 p-4 space-y-2 overflow-y-auto" style={{ borderRight: `1px solid ${T.border}` }}>
                 <p className="font-mono text-[10px] uppercase tracking-widest mb-3" style={{ color: T.text2 }}>Files ({MOCK_UPLOAD_FILES.length})</p>
                 {MOCK_UPLOAD_FILES.map(f => (
                   <div key={f.id} className="flex items-center gap-2.5 p-2 rounded-sm" style={{ backgroundColor: T.bg2, border: `1px solid ${T.border}` }}>
                     <div className="w-9 h-9 flex-shrink-0 rounded-sm overflow-hidden">
-                      <img src={img(f.photoId, 72, 72)} alt={f.name} className="w-full h-full object-cover" />
+                      <img src={f.photoId} alt={f.name} className="w-full h-full object-cover" />
                     </div>
                     <div className="min-w-0">
                       <p className="text-[11px] truncate font-medium" style={{ color: T.text0 }}>{f.name}</p>
@@ -1049,7 +1112,7 @@ function UploadModal({ onClose, onComplete }) {
                 <span className="font-mono text-xs" style={{ color: T.text2 }}>
                   {MOCK_UPLOAD_FILES.length} files · <span style={{ color: T.text1 }}>{totalSize} total</span>
                 </span>
-                <button onClick={() => setStep(3)}
+                <button onClick={ handleConfirm }
                   className="flex items-center gap-2 px-5 h-8 rounded-sm text-xs font-semibold transition-all"
                   style={{ backgroundColor: T.blue, color: '#fff' }}
                   onMouseEnter={e => (e.currentTarget.style.backgroundColor = T.blueSoft)}
@@ -1097,7 +1160,7 @@ function UploadModal({ onClose, onComplete }) {
                   <div key={f.id} className="flex items-center gap-3 p-3 rounded-sm"
                     style={{ backgroundColor: T.bg2, border: `1px solid ${done ? T.green+'33' : T.border}` }}>
                     <div className="w-10 h-10 flex-shrink-0 rounded-sm overflow-hidden">
-                      <img src={img(f.photoId, 80, 80)} alt={f.name} className="w-full h-full object-cover" />
+                      <img src={f.photoId} alt={f.name} className="w-full h-full object-cover" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium truncate mb-1.5" style={{ color: T.text0 }}>{f.name}</p>
@@ -1135,6 +1198,16 @@ function UploadModal({ onClose, onComplete }) {
         )}
       </div>
     </div>
+  )
+}
+
+// ─── ATOMS ─────────────────────────────────────────────────────────────────────
+function Toggle({ on, onToggle }) {
+  return (
+    <button onClick={onToggle} className="relative inline-flex items-center flex-shrink-0 h-5 rounded-full transition-colors" style={{ width: 36, backgroundColor: on ? T.blue : T.bg4 }}>
+      <span className="inline-block w-3.5 h-3.5 rounded-full bg-white shadow transition-transform"
+        style={{ transform: on ? 'translateX(18px)' : 'translateX(2px)' }} />
+    </button>
   )
 }
 
